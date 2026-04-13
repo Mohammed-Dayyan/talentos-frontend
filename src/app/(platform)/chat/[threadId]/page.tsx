@@ -61,7 +61,7 @@ export default function ChatThreadPage() {
   }, [threadId]);
 
   // ── Connection status ────────────────────────────────────────────────────
-  const [wsStatus, setWsStatus] = useState<'connected' | 'reconnecting' | 'disconnected'>('disconnected');
+  const [sseStatus, setSseStatus] = useState<'connected' | 'reconnecting' | 'disconnected'>('disconnected');
 
   // ── Initial load ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -71,31 +71,26 @@ export default function ChatThreadPage() {
     fetch(`${API}/api/chat/threads/${threadId}/read`, { method: 'PATCH', credentials: 'include' }).catch(() => {});
   }, [threadId, loadThread, loadMessages]);
 
-  // ── WebSocket real-time updates ──────────────────────────────────────────
+  // ── Server-Sent Events real-time updates ────────────────────────────────
   useEffect(() => {
-    let ws: WebSocket | null = null;
+    let es: EventSource | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let reconnectDelay = 1000;
     let unmounted = false;
 
     const connect = () => {
       if (unmounted) return;
-      // Cookie is HttpOnly — backend reads it server-side; no token in query param needed
-      const wsUrl = `ws://localhost:8000/ws/chat/${threadId}`;
-      ws = new WebSocket(wsUrl);
+      // SSE endpoint — cookie is sent automatically (same-origin)
+      es = new EventSource(`${API}/api/chat/stream/${threadId}`, { withCredentials: true });
 
-      ws.onopen = () => {
+      es.onopen = () => {
+        setSseStatus('connected');
         reconnectDelay = 1000;
       };
 
-      ws.onmessage = (event) => {
+      es.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (data.type === 'connected') {
-            setWsStatus('connected');
-            return;
-          }
-          // Append new message (dedupe by id) — no loadMessages() to avoid race condition
           if (data.type === 'message' && data.id) {
             setMsgs(prev => {
               if (prev.some(m => m.id === data.id)) return prev;
@@ -107,37 +102,27 @@ export default function ChatThreadPage() {
         }
       };
 
-      ws.onclose = (event) => {
-        setWsStatus('disconnected');
+      es.onerror = () => {
+        setSseStatus('reconnecting');
+        es?.close();
         if (unmounted) return;
-        // 4001 = auth failure — don't reconnect
-        if (event.code === 4001) return;
-        setWsStatus('reconnecting');
         reconnectTimer = setTimeout(() => {
           reconnectDelay = Math.min(reconnectDelay * 2, 30000);
           connect();
         }, reconnectDelay);
       };
-
-      ws.onerror = (err) => {
-        console.error('[TalentOS WS] error', err);
-      };
     };
 
-    // Delay initial connect by 50ms to avoid React StrictMode double-mount race
-    // (StrictMode mounts → unmounts → remounts; without delay the first WS closes
-    // mid-handshake and the browser logs "closed before connection established")
-    const connectTimer = setTimeout(() => {
-      connect();
-    }, 50);
+    const connectTimer = setTimeout(connect, 50);
 
     return () => {
       unmounted = true;
       clearTimeout(connectTimer);
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      ws?.close();
+      es?.close();
+      setSseStatus('disconnected');
     };
-  }, [threadId, loadMessages]);
+  }, [threadId]);
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: 'smooth' });
@@ -221,17 +206,17 @@ export default function ChatThreadPage() {
         {/* WebSocket connection status pill */}
         <span className={[
           'flex items-center gap-1.5 text-[10px] font-medium px-2 py-0.5 rounded-full',
-          wsStatus === 'connected'
+          sseStatus === 'connected'
             ? 'bg-green-50 text-green-700'
-            : wsStatus === 'reconnecting'
+            : sseStatus === 'reconnecting'
             ? 'bg-yellow-50 text-yellow-700'
             : 'bg-red-50 text-red-600',
         ].join(' ')}>
           <span className={[
             'w-1.5 h-1.5 rounded-full',
-            wsStatus === 'connected' ? 'bg-green-500' : wsStatus === 'reconnecting' ? 'bg-yellow-500' : 'bg-red-500',
+            sseStatus === 'connected' ? 'bg-green-500' : sseStatus === 'reconnecting' ? 'bg-yellow-500' : 'bg-red-500',
           ].join(' ')} />
-          {wsStatus === 'connected' ? 'Live' : wsStatus === 'reconnecting' ? 'Reconnecting…' : 'Disconnected'}
+          {sseStatus === 'connected' ? 'Live' : sseStatus === 'reconnecting' ? 'Reconnecting…' : 'Disconnected'}
         </span>
       </div>
 
