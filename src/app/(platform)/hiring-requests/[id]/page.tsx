@@ -16,6 +16,8 @@ interface HiringRequest {
   urgency: string;
   application_count?: number;
   candidate_count?: number;
+  careers_portal_link?: string;
+  jd_draft?: string;
   jd_text?: string;
   created_at?: string;
 }
@@ -206,6 +208,7 @@ export default function HiringRequestDetailPage() {
   ];
 
   const totalCandidates = request.application_count ?? request.candidate_count ?? candidates.length;
+  const jdContent = request.jd_draft ?? request.jd_text ?? '';
 
   return (
     <div className="h-full overflow-y-auto">
@@ -233,6 +236,16 @@ export default function HiringRequestDetailPage() {
             <span className="text-xs text-muted-foreground flex items-center gap-1">
               <Users size={12} /> {totalCandidates} total
             </span>
+            {request.careers_portal_link && (
+              <a
+                href={request.careers_portal_link}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs px-2.5 py-0.5 rounded-full font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors"
+              >
+                Careers Link
+              </a>
+            )}
           </div>
         </div>
 
@@ -259,6 +272,19 @@ export default function HiringRequestDetailPage() {
         {/* Overview tab */}
         {activeTab === 'overview' && (
           <div className="space-y-4">
+            {request.careers_portal_link && (
+              <div className="bg-white border border-border rounded-lg p-5">
+                <h2 className="text-sm font-semibold mb-2 text-foreground">Career Portal</h2>
+                <a
+                  href={request.careers_portal_link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm text-indigo-700 hover:underline break-all"
+                >
+                  {request.careers_portal_link}
+                </a>
+              </div>
+            )}
             <div className="bg-white border border-border rounded-lg p-5">
               <h2 className="text-sm font-semibold mb-4 text-foreground">Pipeline Summary</h2>
               <div className="grid grid-cols-3 gap-3">
@@ -404,9 +430,9 @@ export default function HiringRequestDetailPage() {
         {/* JD tab */}
         {activeTab === 'jd' && (
           <div className="bg-white border border-border rounded-lg p-6">
-            {request.jd_text ? (
+            {jdContent ? (
               <div className="prose prose-sm max-w-none">
-                {request.jd_text.split('\n').map((line, i) => {
+                {jdContent.split('\n').map((line, i) => {
                   if (line.startsWith('**') && line.endsWith('**')) {
                     return <p key={i} className="font-bold text-foreground mt-4 mb-1">{line.replace(/\*\*/g, '')}</p>;
                   }
